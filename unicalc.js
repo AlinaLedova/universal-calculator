@@ -1,90 +1,3 @@
-/************************
-*   FORM-Constructor
-************************/
-
-let SendFunctionName = 'SendToServer';
-
-function createForm(jsonStr)
-{
-    let json = JSON.parse(jsonStr);
-
-    let container = document.getElementById(json.id);
-    let form = document.createElement('form');
-    let formParams = json.params;
-
-    if (!formParams.isEmpty())
-    {
-        for (let key in formParams)
-        {
-            if (formParams.hasOwnProperty(key))
-                form.setAttribute(key, formParams[key]);
-        }
-    }
-
-    let formId;
-    if (form.hasAttribute("id"))
-        formId = form.getAttribute("id");
-    else
-        formId = 'unicalc';
-
-    let columns = json.columns;
-    if (typeof columns === "number" && columns > 0)
-    {
-        let i;
-        for (i = 0; i<columns; i++)
-        {
-            let col = json[`col${i}`];
-            let columnWrap = document.createElement('div');
-            columnWrap.setAttribute('class', `column col${i}`)
-
-            if (!col.isEmpty())
-            {
-                for (let key in col)
-                {
-                    let tag;
-                    if (col.hasOwnProperty(key))
-                    {
-                        tag = createTag(col[key].tagname, col[key].params, formId);
-                        columnWrap.appendChild(tag);
-                    }
-                }
-            }
-            form.appendChild(columnWrap);
-        }
-    }
-
-    container.appendChild(form);
-}
-
-function createTag(tagname, params, id)
-{
-    logDebug("In CreateTag func: ", tagname, params)
-    let tag = document.createElement(tagname);
-
-    for (let param in params)
-    {
-        if (params.hasOwnProperty(param))
-        {
-            tag.setAttribute(param, params[param], id);
-
-            if (param === "role" && params[param] === "send")
-                tag = addBtnFunction(tag, id);
-        }
-    }
-    return tag;
-}
-
-function addBtnFunction(tag, id)
-{
-    tag.setAttribute('onclick', `${SendFunctionName}("${id}")`);
-    return tag;
-}
-
-
-/******************************************
-*   JSON-generator (KnockOut 3.5.0. used)
-******************************************/
-
 /*** Definitions ***/
 
 const AllowedFormSubmissionMethods = {
@@ -102,12 +15,14 @@ const AllowedTagNames = {
 
 const AllowedInputTypes = {
     get TEXT() {return "text"},
+    get NUMBER() {return "number"},
     get PASSWORD() {return "password"},
     get BUTTON() {return "button"},
     get SUBMIT() {return "submit"},
     get CHECKBOX() {return "checkbox"},
     get RADIO() {return "radio"},
-    get RESET() {return "reset"}
+    get RESET() {return "reset"},
+    get HIDDEN() {return "hidden"}
 };
 
 const AllowedButtonTypes = {
@@ -129,6 +44,472 @@ const DefaultButtonType = AllowedButtonTypes.BUTTON;
 const DefaultAction = "#";
 const DefaultRole = AllowedButtonRoles.NONE;
 
+const SendFunctionName = "SendToServer";
+const DefaultFormId = "unicalc";
+const JsonPath = "json/";
+
+/********************************
+*   HTML Tag Parameters
+********************************/
+
+class HtmlTag
+{
+    constructor(tagName, data)
+    {
+        this.tagName = tagName;
+        this.data = data;
+        this.id = String.Empty;
+        this.name = String.Empty;
+    }
+
+    fillParams(data)
+    {
+        for (let param in data)
+        {
+            if (this.hasOwnProperty(param))
+                this[param] = data[param];
+        }
+    }
+}
+
+const HtmlInputTypes = {
+    text: "setAttributes",
+    password: "setAttributes",
+    button: "setAttributes",
+    submit: "setAttributes",
+    reset: "setAttributes",
+    radio: "setAttributesWithLabel",
+    checkbox: "setAttributesWithLabel"
+};
+
+class HtmlTagInput extends HtmlTag
+{
+    constructor(tagName, data)
+    {
+        super(tagName, data);
+        this.type = DefaultInputType;
+        this.placeholder = String.Empty;
+        this.value = String.Empty;
+        this.fillParams(this.data);
+    }
+
+    toHtml(tagName, data)
+    {
+        let tag = document.createElement(tagName);
+
+        let method = HtmlInputTypes[data.type];
+        tag = this[method](tag, data);
+
+        return tag;
+    }
+
+    /**
+     * Create input with types:
+     * text, password, submit, button, reset
+     *
+     * @param {HTMLElement} tag
+     * @param {object} params
+     * @returns {HTMLElement}
+     */
+    setAttributes(tag, params)
+    {
+        for (let param in params)
+            tag.setAttribute(param, params[param]);
+        return tag;
+    }
+
+    /**
+     * Create input with types:
+     * radio, checkbox
+     *
+     * @param {HTMLElement} tag
+     * @param {object} params
+     * @returns {HTMLSpanElement}
+     */
+    setAttributesWithLabel(tag, params)
+    {
+        let wrap = document.createElement("span");
+
+        let label = document.createElement("label");
+        let text = document.createTextNode(params["value"]);
+        label.setAttribute("for", params["id"]);
+        label.appendChild(text);
+
+        for (let param in params)
+            tag.setAttribute(param, params[param]);
+
+        wrap.appendChild(tag);
+        wrap.appendChild(label);
+
+        return wrap;
+    }
+}
+
+class HtmlTagButton extends HtmlTag
+{
+    constructor(tagName, data)
+    {
+        super(tagName, data);
+        this.type = DefaultButtonType;
+        this.value = String.Empty;
+        this.innerText = String.Empty;
+        this.role = DefaultRole;
+        this.fillParams(this.data);
+    }
+
+    toHtml(tagName, data, id="unicalc")
+    {
+        let tag = document.createElement(tagName);
+
+        for (let param in data) {
+            if (param !== "innerText")
+                tag.setAttribute(param, data[param]);
+            else
+            {
+                let text = document.createTextNode(data[param]);
+                tag.appendChild(text);
+            }
+
+            if (param === "role" && data[param] === "send")
+                tag = this.addBtnFunction(tag, id);
+        }
+
+        return tag;
+    }
+
+    addBtnFunction(tag, id)
+    {
+        tag.setAttribute('onclick', `${SendFunctionName}("${id}")`);
+        return tag;
+    }
+}
+
+class HtmlTagTextarea extends HtmlTag
+{
+    constructor(tagName, data)
+    {
+        super(tagName, data);
+        this.value = String.Empty;
+        this.innerText = String.Empty;
+        this.cols = String.Empty;
+        this.rows = String.Empty;
+        this.fillParams(this.data);
+    }
+
+    toHtml(tagName, data)
+    {
+        let tag = document.createElement(tagName);
+
+        for (let param in data) {
+            if (param !== "innerText")
+                tag.setAttribute(param, data[param]);
+            else
+            {
+                let text = document.createTextNode(data[param]);
+                tag.appendChild(text);
+            }
+        }
+
+        return tag;
+    }
+}
+
+class HtmlTagProgress extends HtmlTag {
+    constructor(tagName, data)
+    {
+        super(tagName, data);
+        this.value = String.Empty;
+        this.max = String.Empty;
+        this.fillParams(this.data);
+    }
+
+    toHtml(tagName, data)
+    {
+        let tag = document.createElement(tagName);
+
+        for (let param in data)
+            tag.setAttribute(param, data[param]);
+
+        return tag;
+    }
+}
+
+class HtmlTagSelect extends HtmlTag
+{
+    constructor(tagName, data)
+    {
+        super(tagName, data);
+
+    }
+
+    toHtml(tagName, data)
+    {
+        let tag = document.createElement(tagName);
+
+        for (let param in data)
+        {
+            if (param !== "options")
+                tag.setAttribute(param, data[param]);
+            else
+            {
+                for (let i = 0; i < data[param].length; i++)
+                {
+                    let option = document.createElement("option");
+                    option.setAttribute("value", data[param][i].value);
+
+                    let text = document.createTextNode(data[param][i].description);
+                    option.appendChild(text);
+
+                    tag.appendChild(option);
+                }
+            }
+        }
+
+        return tag;
+    }
+}
+
+const HtmlTagsProxy = {
+    HtmlTagInput,
+    HtmlTagButton,
+    HtmlTagTextarea,
+    HtmlTagProgress,
+    HtmlTagSelect
+};
+
+
+class HtmlTagFactory
+{
+    constructor(tagName, tagData, formId)
+    {
+        this.tagName = tagName;
+        this.htmlTag = this.getParams(tagName, tagData);
+        this.htmlElement = this.htmlTag.toHtml(tagName, this.htmlTag.data, formId);
+    }
+
+    getParams(tagName, tagData)
+    {
+        let ClassName = `HtmlTag${tagName.toUCFirst()}`;
+        return new HtmlTagsProxy[ClassName](tagName, tagData);
+    }
+}
+
+class HtmlColumn
+{
+    constructor(json, formId)
+    {
+        this.formId = formId;
+        this.tags = this.fillColumn(json);
+    }
+
+    fillColumn(json, formId)
+    {
+        let column = document.createElement("div");
+
+        if (!json.IsEmpty)
+        {
+            for (let item in json)
+            {
+                let tag = new HtmlTagFactory(json[item]["tagname"], json[item]["params"], formId);
+                column.appendChild(tag.htmlElement);
+            }
+        }
+        logDebug(json);
+        return column;
+    }
+}
+
+class Calculator
+{
+    constructor(calcId, json)
+    {
+        this.id = calcId;
+        this.json = json;
+        this.form = this.generateForm(this.json);
+        this.formId = this.getFormId(this.json);
+        this.getColumns(this.json.columns, this.form, this.formId);
+        this.printForm(this.form);
+    }
+
+    generateForm(json)
+    {
+        let form = document.createElement("form");
+
+        if (!json.params.IsEmpty)
+            for (let param in json.params)
+                form.setAttribute(param, json.params[param]);
+
+        return form;
+    }
+
+    getColumns(json, form, formId)
+    {
+        if (!json.IsEmpty)
+        {
+            for (let col in json)
+            {
+                let htmlColumn = new HtmlColumn(json[col], formId);
+
+                let column = htmlColumn.tags;
+                column.setAttribute("id", `column-${col}`);
+                column.setAttribute("class", "column");
+
+                form.appendChild(column);
+            }
+        }
+    }
+
+    getFormId(json)
+    {
+        if (json.params.id.IsEmpty || !json.params.id)
+            return DefaultFormId;
+        else
+            return json.params.id;
+    }
+
+    printForm(form)
+    {
+        let block = document.getElementById(this.id);
+        block.appendChild(form);
+    }
+}
+
+function initCalculator(calculator, calcId)
+{
+    fetch(`${JsonPath}${calcId}.json`).then(async (response) => {
+            if (!response.ok) throw ("Response");
+            let parsedJson = await response.json();
+            calculator = new Calculator(calcId, parsedJson);
+        }
+    );
+}
+
+/******************************************
+*   Logical Part
+******************************************/
+
+class FormulaArgument
+{
+    constructor(elementId)
+    {
+        this.id = elementId;
+    }
+
+    toString()
+    {
+        return document.getElementById(this.id).value;
+    }
+}
+
+class FormulaOperator {
+    constructor(operator) {
+        this.operator = operator;
+    }
+
+    toString()
+    {
+        return this.operator;
+    }
+}
+
+class DivideFormulaOperator extends FormulaOperator
+{
+    constructor()
+    {
+        super("/");
+    }
+}
+
+class MultiplyFormulaOperator extends FormulaOperator
+{
+    constructor()
+    {
+        super("*");
+    }
+}
+
+class SubtractFormulaOperator extends FormulaOperator
+{
+    constructor()
+    {
+        super("-");
+    }
+}
+
+class AddFormulaOperator extends FormulaOperator
+{
+    constructor()
+    {
+        super("+");
+    }
+}
+
+class OpenBracketFormulaOperator extends FormulaOperator
+{
+    constructor()
+    {
+        super("(");
+    }
+}
+
+class CloseBracketFormulaOperator extends FormulaOperator
+{
+    constructor()
+    {
+        super(")");
+    }
+}
+
+const FormulaOperatorProxy = {
+    DivideFormulaOperator,
+    MultiplyFormulaOperator,
+    AddFormulaOperator,
+    SubtractFormulaOperator,
+    OpenBracketFormulaOperator,
+    CloseBracketFormulaOperator
+};
+
+class FormulaQueue
+{
+    constructor(array)
+    {
+        this.json = {
+            formula:[
+                {
+                    type: "operator",
+                    name: "OpenBracket"
+                },
+                {
+                    type: "argument",
+                    id: "price"
+                }
+            ]
+        };
+        this.queue = array;
+    }
+
+    getFormulaParams(json)
+    {
+        let params = [];
+
+
+    }
+
+    toString()
+    {
+        let str = String.Empty;
+
+        for (let i = 0; i < this.queue.length; i++)
+            str += this.queue[i];
+
+        return str;
+    }
+}
+
+/******************************************
+*   JSON-generator (KnockOut 3.5.0. used)
+******************************************/
+
 /*** Tag Parameters ***/
 
 class TagParams
@@ -147,6 +528,8 @@ class TagInputParams extends TagParams
         super();
         this.type = ko.observable(DefaultInputType);
         this.value = ko.observable(String.Empty);
+        this.placeholder = ko.observable(String.Empty);
+        this.dataCount = ko.observable(String.Empty);
     }
 }
 
@@ -234,7 +617,13 @@ class TagProgressParams extends TagParams
     }
 }
 
-const TagParamsProxy = {TagInputParams,TagButtonParams, TagSelectParams, TagTextareaParams, TagProgressParams};
+const TagParamsProxy = {
+    TagInputParams,
+    TagButtonParams,
+    TagSelectParams,
+    TagTextareaParams,
+    TagProgressParams
+};
 
 /*** End Tag Parameters ***/
 
@@ -348,12 +737,8 @@ class FormColumn {
 
         if (this.tags().length > 0)
         {
-            let tag = 1;
             for (let i = 0; i < this.tags().length; i++)
-            {
-                json[tag] = ko.toJS(this.tags()[i]);
-                tag++;
-            }
+                json[i + 1] = ko.toJS(this.tags()[i]);
         }
 
         return json;
@@ -368,6 +753,7 @@ class Generator
         this.params = new FormParameters();
         this.columns = ko.observableArray([]);
         this.DownloadData = ko.observable();
+        this.logical = ko.observableArray([]);
         this.AddColumn();
     }
 
@@ -380,7 +766,6 @@ class Generator
             FileName: filename
         };
 
-        logDebug(obj);
         return obj;
     }
 
@@ -460,32 +845,6 @@ class Generator
         return json;
     }
 }
-
-/*ko.bindingHandlers.InlineDownload = {
-    update: function(element,
-                     valueAccessor) {
-        let value = ko.unwrap(valueAccessor());
-        if (typeof value.FileName === "string" && !value.FileName.IsEmpty)
-            element.setAttribute("download", value.FileName);
-
-        let href = "data:";
-
-        if (typeof value.Mime === "string" && !value.Mime.IsEmpty)
-            href += value.Mime + ";";
-
-        if (typeof value.Charset === "string" && !value.Charset.IsEmpty)
-            href += value.Charset + ";";
-
-
-        if (typeof value.Base64 === "boolean" && value.Base64) {
-            href += "base64,"+btoa(value.Data);
-        } else {
-            href += "," + encodeURIComponent(value.Data);
-        }
-
-        element.setAttribute("href", href);
-    }
-};*/
 
 ko.bindingHandlers.BlobDownload = {
     update: function(element, valueAccessor)

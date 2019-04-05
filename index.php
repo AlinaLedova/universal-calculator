@@ -9,6 +9,7 @@
     <script type="text/javascript" src="../../js/main.js"></script>
     <script type="text/javascript" src="js/unicalc.js"></script>
     <link rel="stylesheet" type="text/css" href="../../style/bootstrap.min.css">
+    <link rel="stylesheet" type="text/css" href="style/style.css">
 </head>
 <body class="bg-dark">
 <?php
@@ -20,82 +21,96 @@
 
 require_once '../../functions.php';
 
-$form = array(
-    "id" => "calc-1",
-    "params" => array(
-            "id" => "unique_form",
-            "method" => "post",
-            "action" => "#"
-    ),
-    "columns" => 2,
-    "col0" => array(
-        1 => array(
-            "tagname" =>"input",
-            "params" => array(
-            "id" => "name",
-            "type" => "text",
-            "name" => "username"
-            )
-        ),
-        2 => array(
-            "tagname" =>"input",
-            "params" => array(
-            "id" => "pass",
-            "type" => "password",
-            "name" => "password"
-            )
-            )
-        ),
-        "col1" => array(
-            1 => array(
-                "tagname" => "input",
-                "params" => array(
-                "id" => "phone",
-                "type" => "text",
-                "name" => "phone"
-                )
-            ),
-            2 => array(
-                "tagname" => "input",
-                "params" => array(
-                "id" => "country",
-                "type" => "text",
-                "name" => "country"
-                )
-            ),
-            3 => array(
-                "tagname" => "input",
-                "params" => array(
-                    "id" => "btn",
-                    "type" => "button",
-                    "name" => "button",
-                    "value" => "Send",
-                    "role" => "send"
-                )
-            )
-        )
-);
-
-//print_array($form);
-$jsonForm = json_encode($form);
-
-/*echo $jsonForm;*/
 
 ?>
 <div class="container">
     <div class="row">
         <header class="col-12">
-            <h2 class="text-warning">UNIversal CALCulator v.0.1.</h2>
+            <h2 class="text-warning">UNIversal CALCulator v.0.3.</h2>
         </header>
+        <div id ="test"></div>
     </div>
     <div id="calc-1">
+    </div>
+    <div id="test-calc">
+        <form id="test-form">
+            <input type="text" name="name" id="name" value="50">
+            <input type="checkbox" name="price" id="price" value="1000">Checkbox
+        </form>
     </div>
 </div>
 <script type="text/javascript">
     console.clear();
 
-    let form = createForm('<?php echo $jsonForm; ?>');
+    let calc;
+    initCalculator(calc, "calc-1");
 
+    /******************************/
+
+    let json = {
+        formula: [
+            {
+                type: "operator",
+                name: "OpenBracket"
+            },
+            {
+                type: "argument",
+                id: "name"
+            },
+            {
+                type: "operator",
+                name: "Add"
+            },
+            {
+                type: "argument",
+                id: "price"
+            },
+            {
+                type: "operator",
+                name: "CloseBracket"
+            }
+        ]
+    };
+
+    function getFormulaParams(params) {
+        let args = [];
+
+        for (let i = 0; i < params.length; i++)
+        {
+
+            switch (params[i].type)
+            {
+                case "operator":
+                    let ClassName = `${params[i].name}FormulaOperator`;
+                    args[i] = new FormulaOperatorProxy[ClassName]().toString();
+                    break;
+                case "argument":
+                    let arg = new FormulaArgument(params[i].id);
+                    args[i] = arg.toString();
+                    break;
+            }
+        }
+
+        return args;
+    }
+
+    let args = [
+        "(",
+        "10",
+        "+",
+        "5",
+        ")",
+        "*",
+        "2",
+        "/",
+        "5"
+    ];
+
+    /******************************/
+    let fQueue = new FormulaQueue(args);
+    //let fOperator = new OpenBracketFormulaOperator();
+
+    logDebug("HERE >>>>", getFormulaParams(json.formula));
 </script>
 </body>
 </html>
